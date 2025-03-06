@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import os
 import sys
 import certifi
+import csv
 
 def connect_to_mongodb():
     """Connect to MongoDB and return database object"""
@@ -32,14 +33,63 @@ def connect_to_mongodb():
 def process_team(row):
     """Process team data and convert types as needed"""
     try:
-        # Convert to proper types
-        row['id'] = int(row['id'])
+        processed_row = {}
+        for key, value in row.items():
+            if key == 'logos' and isinstance(value, str):
+                # Take only the first logo from the list
+                try:
+                    logos_list = eval(value) if value else []
+                    processed_row['logo'] = str(logos_list[0]) if logos_list else ""
+                except:
+                    processed_row['logo'] = ""
+            elif key == 'location' and isinstance(value, str):
+                # Unpack location dictionary into separate fields
+                try:
+                    location_dict = eval(value) if value else {}
+                    for loc_key, loc_value in location_dict.items():
+                        # Create new fields with location_ prefix
+                        processed_row[f'location_{loc_key}'] = str(loc_value) if pd.notna(loc_value) else ""
+                except:
+                    # If there's an error, create empty location fields
+                    processed_row['location_latitude'] = ""
+                    processed_row['location_longitude'] = ""
+                    processed_row['location_venue_id'] = ""
+            elif key != 'location':  # Skip the original location field
+                # Convert everything else to string, handling None/NaN
+                processed_row[key] = str(value) if pd.notna(value) else ""
         
-        return row
+        return processed_row
     except Exception as e:
         print(f"Error processing row: {row}")
         print(f"Error: {e}")
         return None
+
+def save_processed_csv(processed_teams, output_dir="cleaned_data"):
+    """Save processed teams data to a new CSV file"""
+    try:
+        # Create cleaned_data directory if it doesn't exist
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Define the output path
+        csv_path = os.path.join(output_dir, "teams_cleaned.csv")
+        
+        # Get all possible headers from the processed data
+        headers = set()
+        for team in processed_teams:
+            headers.update(team.keys())
+        headers = sorted(list(headers))  # Sort headers for consistency
+        
+        print(f"Saving processed data to: {csv_path}")
+        # Write the processed data to CSV
+        with open(csv_path, "w", newline="", encoding="utf-8") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=headers)
+            writer.writeheader()
+            writer.writerows(processed_teams)
+        print("Successfully saved processed CSV file")
+        
+    except Exception as e:
+        print(f"Error saving processed CSV: {str(e)}")
+        sys.exit(1)
 
 def load_teams_to_mongodb(csv_path, db):
     """Load teams from CSV to MongoDB"""
@@ -61,6 +111,9 @@ def load_teams_to_mongodb(csv_path, db):
             processed_team = process_team(team)
             if processed_team:
                 processed_teams.append(processed_team)
+        
+        # Save processed data to CSV
+        save_processed_csv(processed_teams)
         
         # Create collection and insert teams
         collection = db.teams

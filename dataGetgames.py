@@ -82,15 +82,37 @@ def main():
         games = fetch_games_for_year(year)
         if games:
             for game in games:
-                game["year"] = year
-                all_games.append(game)
-            print(f"Retrieved {len(games)} games for {year}")
+                # Only include games where home_division is 'fbs'
+                if game.get('home_division') == 'fbs':
+                    game["year"] = year
+
+                    # Create a home row
+                    home_game = game.copy()
+                    # Adjust these key names if necessary (e.g., "home_team_id" vs "home_id")
+                    home_game["team_id"] = game.get("home_id")
+                    home_game["game_location"] = "Home"
+                    home_game["opp_team_id"] = game.get("away_id")
+                    
+                    # Create an away row
+                    away_game = game.copy()
+                    away_game["team_id"] = game.get("away_id")
+                    away_game["game_location"] = "Away"
+                    away_game["opp_team_id"] = game.get("home_id")
+                    
+                    # Append both rows to the list
+                    all_games.extend([home_game, away_game])
+            print(f"Retrieved {len(games)} games for {year} (expanded to {len(all_games)} rows after unpivoting)")
         else:
             print(f"Failed to fetch games for year: {year}")
         time.sleep(1)  # Pause to avoid hitting API rate limits
     
-    # Print one game to check the data
-    print(all_games[0])
+    if all_games:
+        # Print one transformed game to check the data
+        print("Sample transformed game record:")
+        print(all_games[0])
+    else:
+        print("No games retrieved.")
+        sys.exit(1)
 
     # Set the output directory (modify this path as needed)
     output_dir = "output_directory"  # Change this to your desired directory
